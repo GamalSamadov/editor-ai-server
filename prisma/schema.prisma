@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String        @id @default(cuid())
+  email             String        @unique
+  name              String?
+  password          String
+  verificationToken String?       @default(cuid()) @map("verification_token")
+  verified          Boolean       @default(false)
+  sessions          UserSession[]
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model UserSession {
+  id                String             @id @default(uuid())
+  completed         Boolean            @default(false)
+  user              User?              @relation(fields: [userId], references: [id])
+  userId            String?            @map("user_id")
+  transcriptionJobs TranscriptionJob[]
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at")
+
+  @@map("user_sessions")
+}
+
+model TranscriptionJob {
+  id              String                 @id @default(uuid())
+  url             String                 @unique
+  status          TranscriptionJobStatus @default(PENDING)
+  downloadedTitle String?
+  finalTranscript String?
+  events          TranscriptionEvent[]
+  session         UserSession?           @relation(fields: [sessionId], references: [id])
+  sessionId       String?                @map("session_id")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @default(now()) @updatedAt @map("updated_at")
+
+  @@map("transcription_jobs")
+}
+
+model TranscriptionEvent {
+  id        String           @id @default(uuid())
+  jobId     String
+  job       TranscriptionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  content   String
+  completed Boolean          @default(false)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @default(now()) @updatedAt @map("updated_at")
+
+  @@map("transcription_events")
+}
+
+enum TranscriptionJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  ERROR
+}
