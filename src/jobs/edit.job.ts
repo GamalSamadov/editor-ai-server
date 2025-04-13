@@ -5,7 +5,6 @@ import { userSession } from '@/services/session/session.service'
 
 import { pushEditEvent } from './edit'
 import {
-	convertToUzbekLatin,
 	delay,
 	editGemini,
 	formatDuration,
@@ -102,7 +101,7 @@ export async function runEditJob(
 
 		const duration = performance.now() - jobStartTime
 
-		const finalText = `<i style="display: block; font-style: italic; text-align: center;">🕒 Matnni tahrirlab chiqish uchun: ${formatDuration(duration)} vaqt ketdi!</i><h1 style="font-weight: 700; font-size: 1.8rem; margin: 1rem 0; text-align: center; line-height: 1;">${title}</h1>\n\n<p style="text-indent: 30px;">${convertToUzbekLatin(combinedResult)}</p>`
+		const finalText = `<i style="display: block; font-style: italic; text-align: center;">🕒 Matnni tahrirlab chiqish uchun: ${formatDuration(duration)} vaqt ketdi!</i><h1 style="font-weight: 700; font-size: 1.8rem; margin: 1rem 0; text-align: center; line-height: 1;">${title}</h1>\n\n<p style="text-indent: 30px;">${combinedResult}</p>`
 
 		await editService.saveFinalText(jobId, finalText)
 
