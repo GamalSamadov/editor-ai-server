@@ -7,6 +7,7 @@ import 'module-alias/register'
 
 import {
 	authController,
+	editEventController,
 	eventController,
 	sessionController,
 	transcriptController,
@@ -23,7 +24,7 @@ export const prisma = new PrismaClient()
 const app = express()
 
 async function run() {
-	app.use(express.json())
+	app.use(express.json({ limit: '10mb' }))
 	app.use(cookieParser())
 	app.use(
 		cors({
@@ -36,7 +37,8 @@ async function run() {
 	app.use('/api/auth', authController)
 	app.use('/api/users', userController)
 	app.use('/api/sessions', sessionController)
-	app.use('/api/events', eventController)
+	app.use('/api/transcript-events', eventController)
+	app.use('/api/edit-events', editEventController)
 	app.use('/api/transcripts', transcriptController)
 
 	app.all('*', (req: Request, res: Response) => {
