@@ -1,1 +1,1 @@
-export * from './edit-transcribed'
+export * from './edit-gemini'

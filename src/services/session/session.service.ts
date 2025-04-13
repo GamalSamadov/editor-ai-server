@@ -17,6 +17,40 @@ class SessionService {
 		return session.id
 	}
 
+	public async updateURL(id: string, url: string) {
+		await prisma.userSession.update({
+			where: { id },
+			data: { url }
+		})
+		return true
+	}
+
+	public async updateText(id: string, text: string) {
+		await prisma.userSession.update({
+			where: { id },
+			data: { text }
+		})
+		return true
+	}
+
+	public async updatePrompt(id: string, prompt: string) {
+		await prisma.userSession.update({
+			where: { id },
+			data: { prompt }
+		})
+
+		return true
+	}
+
+	public async updateTitle(id: string, title: string) {
+		await prisma.userSession.update({
+			where: { id },
+			data: { title }
+		})
+
+		return true
+	}
+
 	public async completed(id: string) {
 		await prisma.userSession.update({
 			where: { id },
@@ -24,6 +58,14 @@ class SessionService {
 		})
 
 		return true
+	}
+
+	public async findById(id: string) {
+		const session = await prisma.userSession.findUnique({
+			where: { id }
+		})
+
+		return session
 	}
 }
 
