@@ -6,12 +6,12 @@ import { userSession } from '@/services/session/session.service'
 import { pushEditEvent } from './edit'
 import {
 	delay,
-	editGemini,
+	editChatGPT,
 	formatDuration,
 	splitStringByWordCount
 } from './helpers'
 
-const SPLIT_WORD_COUNT = 1000
+const SPLIT_WORD_COUNT = 300
 
 export async function runEditJob(
 	jobId: string,
@@ -49,7 +49,7 @@ export async function runEditJob(
 				broadcast
 			)
 
-			let editedText = await editGemini(chunk, prompt)
+			let editedText = await editChatGPT(chunk, prompt)
 
 			while (!editedText) {
 				await pushEditEvent(
@@ -63,11 +63,11 @@ export async function runEditJob(
 
 				await delay(1000)
 
-				editedText = await editGemini(chunk, prompt)
+				editedText = await editChatGPT(chunk, prompt)
 			}
 
 			if (!editedText) {
-				throw new Error('Gemini tahrir qilish muvaffaqiyatsiz tugadi.')
+				throw new Error('Tahrir qilish muvaffaqiyatsiz tugadi.')
 			}
 			finalTextArray.push(editedText)
 			await delay(500)
