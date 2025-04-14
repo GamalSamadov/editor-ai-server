@@ -11,7 +11,7 @@ import {
 	splitStringByWordCount
 } from './helpers'
 
-const SPLIT_WORD_COUNT = 300
+const SPLIT_WORD_COUNT = 350
 
 export async function runEditJob(
 	jobId: string,
