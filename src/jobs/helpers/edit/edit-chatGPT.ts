@@ -10,7 +10,9 @@ export async function editChatGPT(
 ): Promise<string | null> {
 	try {
 		const result = await client.chat.completions.create({
-			model: 'chatgpt-4o-latest',
+			// model: 'chatgpt-4o-latest',
+			model: 'gpt-4.1',
+			// model: 'o1',
 			store: true,
 			messages: [{ role: 'user', content: `${prompt}${text}` }]
 		})
