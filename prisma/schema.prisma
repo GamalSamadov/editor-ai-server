@@ -22,17 +22,18 @@ model User {
 }
 
 model UserSession {
-  id        String   @id @default(uuid())
-  completed Boolean  @default(false)
+  id        String          @id @default(uuid())
+  completed Boolean         @default(false)
   url       String?
   text      String?
   prompt    String?
   title     String?
-  user      User?    @relation(fields: [userId], references: [id])
-  userId    String?  @map("user_id")
+  user      User?           @relation(fields: [userId], references: [id])
+  userId    String?         @map("user_id")
   jobs      Job[]
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  type      UserSessionType @default(TRANSCRIPT)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @default(now()) @updatedAt @map("updated_at")
 
   @@map("user_sessions")
 }
@@ -67,4 +68,9 @@ enum JobStatus {
   RUNNING
   COMPLETED
   ERROR
+}
+
+enum UserSessionType {
+  TRANSCRIPT
+  EDIT
 }

@@ -1,20 +1,55 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, UserSessionType } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
 class SessionService {
-	public async create(userId: string): Promise<string> {
+	public async createTranscript(userId: string): Promise<string> {
 		const session = await prisma.userSession.create({
 			data: {
 				user: {
 					connect: {
 						id: userId
 					}
-				}
+				},
+				type: UserSessionType.TRANSCRIPT
 			}
 		})
 
 		return session.id
+	}
+
+	public async createEdit(userId: string): Promise<string> {
+		const session = await prisma.userSession.create({
+			data: {
+				user: {
+					connect: {
+						id: userId
+					}
+				},
+				type: UserSessionType.EDIT
+			}
+		})
+
+		return session.id
+	}
+
+	public async findById(id: string) {
+		const session = await prisma.userSession.findUnique({
+			where: { id }
+		})
+
+		return session
+	}
+
+	public async findAll() {
+		const sessions = await prisma.userSession.findMany({
+			include: {
+				user: true,
+				jobs: true
+			}
+		})
+
+		return sessions
 	}
 
 	public async updateURL(id: string, url: string) {
@@ -60,12 +95,12 @@ class SessionService {
 		return true
 	}
 
-	public async findById(id: string) {
-		const session = await prisma.userSession.findUnique({
-			where: { id }
+	public async delete(id: string) {
+		return await prisma.userSession.delete({
+			where: {
+				id
+			}
 		})
-
-		return session
 	}
 }
 

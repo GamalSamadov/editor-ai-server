@@ -3,22 +3,6 @@ import { JobStatus, PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
 class TranscriptService {
-	public async getAll() {
-		return await prisma.job.findMany({
-			include: {
-				session: true
-			}
-		})
-	}
-
-	public async delete(id: string) {
-		return await prisma.job.delete({
-			where: {
-				id
-			}
-		})
-	}
-
 	public async running(jobId: string) {
 		return await prisma.job.update({
 			where: { id: jobId },
