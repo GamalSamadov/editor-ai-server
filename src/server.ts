@@ -10,7 +10,6 @@ import {
 	editEventController,
 	eventController,
 	sessionController,
-	transcriptController,
 	userController
 } from '@/controllers'
 import { logger } from '@/lib/logger'
@@ -39,7 +38,6 @@ async function run() {
 	app.use('/api/sessions', sessionController)
 	app.use('/api/transcript-events', eventController)
 	app.use('/api/edit-events', editEventController)
-	app.use('/api/transcripts', transcriptController)
 
 	app.all('*', (req: Request, res: Response) => {
 		res.status(404).json({
