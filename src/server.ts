@@ -7,6 +7,7 @@ import 'module-alias/register'
 
 import {
 	authController,
+	correctionEventController,
 	editEventController,
 	eventController,
 	sessionController,
@@ -38,6 +39,7 @@ async function run() {
 	app.use('/api/sessions', sessionController)
 	app.use('/api/transcript-events', eventController)
 	app.use('/api/edit-events', editEventController)
+	app.use('/api/correction-events', correctionEventController)
 
 	app.all('*', (req: Request, res: Response) => {
 		res.status(404).json({
