@@ -1,6 +1,10 @@
 import { Request, Response, Router } from 'express'
 
-import { EDIT_PROMPT, TRANSCRIBE_EDIT_PROMPT } from '@/constants'
+import {
+	CORRECTION_PROMPT,
+	EDIT_PROMPT,
+	TRANSCRIBE_EDIT_PROMPT
+} from '@/constants'
 import { authenticate } from '@/middlewares/auth.middleware'
 import { userSession } from '@/services/session/session.service'
 
@@ -73,6 +77,37 @@ router.post(
 		await userSession.updateText(sessionId, text)
 		await userSession.updateTitle(sessionId, title)
 		await userSession.updatePrompt(sessionId, EDIT_PROMPT)
+
+		res.json({ sessionId: sessionId })
+	}
+)
+
+router.post(
+	'/start-correction',
+	authenticate,
+	async (req: Request, res: Response) => {
+		const { text, title } = req.body as {
+			text: string
+			title: string
+		}
+
+		if (!text) {
+			res.status(400).json({ message: 'Text is required!' })
+			return
+		}
+
+		if (!title) {
+			res.status(400).json({ message: 'Title is required!' })
+			return
+		}
+
+		const userId = req.user.id
+
+		const sessionId = await userSession.createEdit(userId)
+
+		await userSession.updateText(sessionId, text)
+		await userSession.updateTitle(sessionId, title)
+		await userSession.updatePrompt(sessionId, CORRECTION_PROMPT)
 
 		res.json({ sessionId: sessionId })
 	}
