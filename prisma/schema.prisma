@@ -22,47 +22,55 @@ model User {
 }
 
 model UserSession {
-  id                String             @id @default(uuid())
-  completed         Boolean            @default(false)
-  user              User?              @relation(fields: [userId], references: [id])
-  userId            String?            @map("user_id")
-  transcriptionJobs TranscriptionJob[]
-  createdAt         DateTime           @default(now()) @map("created_at")
-  updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at")
+  id        String          @id @default(uuid())
+  completed Boolean         @default(false)
+  url       String?
+  text      String?
+  prompt    String?
+  title     String?
+  user      User?           @relation(fields: [userId], references: [id])
+  userId    String?         @map("user_id")
+  jobs      Job[]
+  type      UserSessionType @default(TRANSCRIPT)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @default(now()) @updatedAt @map("updated_at")
 
   @@map("user_sessions")
 }
 
-model TranscriptionJob {
-  id              String                 @id @default(uuid())
-  url             String                 @unique
-  status          TranscriptionJobStatus @default(PENDING)
-  downloadedTitle String?
-  finalTranscript String?
-  events          TranscriptionEvent[]
-  session         UserSession?           @relation(fields: [sessionId], references: [id])
-  sessionId       String?                @map("session_id")
-  createdAt       DateTime               @default(now()) @map("created_at")
-  updatedAt       DateTime               @default(now()) @updatedAt @map("updated_at")
+model Job {
+  id        String       @id @default(uuid())
+  status    JobStatus    @default(PENDING)
+  finalText String?
+  events    Event[]
+  session   UserSession? @relation(fields: [sessionId], references: [id])
+  sessionId String?      @map("session_id")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @default(now()) @updatedAt @map("updated_at")
 
-  @@map("transcription_jobs")
+  @@map("jobs")
 }
 
-model TranscriptionEvent {
-  id        String           @id @default(uuid())
-  jobId     String
-  job       TranscriptionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+model Event {
+  id        String   @id @default(uuid())
+  jobId     String   @map("job_id")
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
   content   String
-  completed Boolean          @default(false)
-  createdAt DateTime         @default(now()) @map("created_at")
-  updatedAt DateTime         @default(now()) @updatedAt @map("updated_at")
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
-  @@map("transcription_events")
+  @@map("events")
 }
 
-enum TranscriptionJobStatus {
+enum JobStatus {
   PENDING
   RUNNING
   COMPLETED
   ERROR
+}
+
+enum UserSessionType {
+  TRANSCRIPT
+  EDIT
 }

@@ -2,7 +2,23 @@ import { JobStatus, PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
-class TranscriptService {
+class EditService {
+	public async getAll() {
+		return await prisma.job.findMany({
+			include: {
+				session: true
+			}
+		})
+	}
+
+	public async delete(id: string) {
+		return await prisma.job.delete({
+			where: {
+				id
+			}
+		})
+	}
+
 	public async running(jobId: string) {
 		return await prisma.job.update({
 			where: { id: jobId },
@@ -24,7 +40,7 @@ class TranscriptService {
 		})
 	}
 
-	public async saveFinalTranscript(jobId: string, finalText: string) {
+	public async saveFinalText(jobId: string, finalText: string) {
 		return await prisma.job.update({
 			where: { id: jobId },
 			data: {
@@ -35,7 +51,7 @@ class TranscriptService {
 	}
 }
 
-class TranscriptEventService {
+class EditEventService {
 	public async create(jobId: string, content: string, completed: boolean) {
 		return await prisma.event.create({
 			data: {
@@ -47,5 +63,5 @@ class TranscriptEventService {
 	}
 }
 
-export const transcriptService = new TranscriptService()
-export const transcriptEventService = new TranscriptEventService()
+export const editService = new EditService()
+export const editEventService = new EditEventService()

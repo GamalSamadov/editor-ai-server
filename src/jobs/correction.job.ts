@@ -7,13 +7,14 @@ import { pushEditEvent } from './edit'
 import {
 	delay,
 	editChatGPT,
+	editGemini,
 	formatDuration,
 	splitStringByWordCount
 } from './helpers'
 
-const SPLIT_WORD_COUNT = 350
+const SPLIT_WORD_COUNT = 700
 
-export async function runEditJob(
+export async function runCorrectionJob(
 	jobId: string,
 	sessionId: string,
 
@@ -30,7 +31,7 @@ export async function runEditJob(
 
 		await pushEditEvent(
 			jobId,
-			`Matn tahrirlanmoqda... (${splittedText.length} ta bo'lak)`,
+			`Matn to'g'irlanmoqda... (${splittedText.length} ta bo'lak)`,
 			false,
 			broadcast
 		)
@@ -42,7 +43,7 @@ export async function runEditJob(
 
 			await pushEditEvent(
 				jobId,
-				`Matn tahrirlanmoqda... (${Number(index) + 1}/${
+				`Matn to'g'irlanmoqda... (${Number(index) + 1}/${
 					splittedText.length
 				})`,
 				false,
@@ -54,7 +55,7 @@ export async function runEditJob(
 			while (!editedText) {
 				await pushEditEvent(
 					jobId,
-					`Matn tahrirlanmoqda... (${Number(index) + 1}/${
+					`Matn to'g'irlanmoqda... (${Number(index) + 1}/${
 						splittedText.length
 					}). Qayta urinish...`,
 					false,
@@ -63,11 +64,11 @@ export async function runEditJob(
 
 				await delay(1000)
 
-				editedText = await editChatGPT(chunk, prompt)
+				editedText = await editGemini(chunk, prompt)
 			}
 
 			if (!editedText) {
-				throw new Error('Tahrir qilish muvaffaqiyatsiz tugadi.')
+				throw new Error("To'g'ri qilish muvaffaqiyatsiz tugadi.")
 			}
 			finalTextArray.push(editedText)
 			await delay(500)
@@ -101,7 +102,7 @@ export async function runEditJob(
 
 		const duration = performance.now() - jobStartTime
 
-		const finalText = `<i style="display: block; font-style: italic; text-align: center;">🕒 Matnni tahrirlab chiqish uchun: ${formatDuration(duration)} vaqt ketdi!</i><h1 style="font-weight: 700; font-size: 1.8rem; margin: 1rem 0; text-align: center; line-height: 1;">${title}</h1>\n\n<p style="text-indent: 30px;">${combinedResult}</p>`
+		const finalText = `<i style="display: block; font-style: italic; text-align: center;">🕒 Matnni to'g'irlab chiqish uchun: ${formatDuration(duration)} vaqt ketdi!</i><h1 style="font-weight: 700; font-size: 1.8rem; margin: 1rem 0; text-align: center; line-height: 1;">${title}</h1>\n\n<p style="text-indent: 30px;">${combinedResult}</p>`
 
 		await editService.saveFinalText(jobId, finalText)
 

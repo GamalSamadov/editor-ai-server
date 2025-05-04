@@ -1,7 +1,7 @@
 import { JobStatus, PrismaClient } from '@prisma/client'
 import { Request, Response, Router } from 'express'
 
-import { runTranscriptionJob } from '@/jobs/transcribe.job'
+import { runCorrectionJob } from '@/jobs/correction.job'
 import { logger } from '@/lib/logger'
 import { authenticate } from '@/middlewares/auth.middleware'
 
@@ -49,7 +49,6 @@ router.get('/:sessionId', async (req: Request, res: Response) => {
 	const { sessionId } = req.params
 
 	try {
-		// 1. Check that the session actually exists
 		const existingSession = await prisma.userSession.findUnique({
 			where: { id: sessionId }
 		})
@@ -59,7 +58,6 @@ router.get('/:sessionId', async (req: Request, res: Response) => {
 			return
 		}
 
-		// 2. Find or create a TranscriptionJob in the DB
 		let job = await prisma.job.findFirst({
 			where: {
 				session: {
@@ -69,7 +67,6 @@ router.get('/:sessionId', async (req: Request, res: Response) => {
 		})
 
 		if (!job) {
-			// Create a brand new job
 			job = await prisma.job.create({
 				data: {
 					status: JobStatus.PENDING,
@@ -79,15 +76,13 @@ router.get('/:sessionId', async (req: Request, res: Response) => {
 				}
 			})
 
-			// Kick off background process
-			void runTranscriptionJob(
+			void runCorrectionJob(
 				job.id,
 				sessionId,
-				// This broadcast function is how the worker can push SSE updates
+
 				async (content, completed) => {
 					const connections = jobConnections.get(job!.id) || []
 					if (connections.length) {
-						// Write SSE data to all connected clients
 						const payload = {
 							content,
 							completed,
@@ -99,24 +94,21 @@ router.get('/:sessionId', async (req: Request, res: Response) => {
 					}
 				}
 			).catch(err => {
-				console.error('Transcription job error:', err)
+				console.error('Edit job error:', err)
 			})
 		}
 
-		// 3. Setup SSE response
 		res.writeHead(200, {
 			'Content-Type': 'text/event-stream',
 			'Cache-Control': 'no-cache',
 			Connection: 'keep-alive'
 		})
 
-		// Add this res to the jobConnections
 		if (!jobConnections.has(job.id)) {
 			jobConnections.set(job.id, [])
 		}
 		jobConnections.get(job.id)?.push(res)
 
-		// 4. Send any previously stored events so the user can see the history
 		const existingEvents = await prisma.event.findMany({
 			where: { jobId: job.id },
 			orderBy: { createdAt: 'asc' }
@@ -131,7 +123,6 @@ router.get('/:sessionId', async (req: Request, res: Response) => {
 			res.write(`data: ${JSON.stringify(payload)}\n\n`)
 		}
 
-		// 5. Keep connection open and handle disconnect
 		req.on('close', () => {
 			const list = jobConnections.get(job!.id)
 			if (list) {

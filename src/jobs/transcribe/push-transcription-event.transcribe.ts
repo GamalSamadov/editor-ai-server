@@ -1,6 +1,6 @@
 import { transcriptEventService } from '@/services/transcript/transcript.service'
 
-export async function pushTranscriptionEvent(
+export async function pushTranscribeEvent(
 	jobId: string,
 	content: string,
 	completed = false,

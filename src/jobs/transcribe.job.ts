@@ -4,8 +4,9 @@ import { performance } from 'perf_hooks'
 
 import {
 	convertToUzbekLatin,
+	delay,
 	deleteGCSFile,
-	editTranscribed,
+	editGemini,
 	formatDuration,
 	transcribeWithGoogle,
 	uploadStreamToGCS
@@ -14,35 +15,45 @@ import { logger } from '@/lib/logger'
 import { userSession } from '@/services/session/session.service'
 import { transcriptService } from '@/services/transcript/transcript.service'
 
-import { getTitleDuration, pushTranscriptionEvent } from './transcribe'
+import { getTitleDuration, pushTranscribeEvent } from './transcribe'
 
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms))
+const requestOptions: ytdl.getInfoOptions = {
+	requestOptions: {
+		headers: {
+			'User-Agent':
+				'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
+		}
+	}
+}
+
+const SEGMENT_DURATION_SECONDS = 60 * 10
+
+function createProgressBar(percent: number, width: number): string {
+	const clampedPercent = Math.max(0, Math.min(100, percent)) // Ensure 0-100
+	const filledWidth = Math.round((width * clampedPercent) / 100)
+	const emptyWidth = width - filledWidth
+	const filled = '█'.repeat(filledWidth)
+	const empty = '░'.repeat(emptyWidth) // Using a different char for empty part
+	// Or use: const empty = '-'.repeat(emptyWidth);
+	return `[${filled}${empty}] ${clampedPercent}%`
+}
 
 export async function runTranscriptionJob(
 	jobId: string,
 	sessionId: string,
-	url: string,
 	broadcast?: (content: string, completed: boolean) => void
 ) {
 	const jobStartTime = performance.now()
-	let audioUrl: string | null = null // Store the audio URL
+	let audioUrl: string | null = null
+
+	const { url, prompt, id } = await userSession.findById(sessionId)
 
 	try {
 		await transcriptService.running(jobId)
 
 		logger.info(`Fetching video info for ${url}`)
 
-		const requestOptions: ytdl.getInfoOptions = {
-			requestOptions: {
-				headers: {
-					'User-Agent':
-						'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
-				}
-			}
-		}
-
 		const { title, totalDuration } = await getTitleDuration(url)
-		await transcriptService.updateTitle(jobId, title)
 
 		try {
 			const info = await ytdl.getInfo(url, requestOptions)
@@ -57,30 +68,25 @@ export async function runTranscriptionJob(
 			}
 			audioUrl = format.url
 			logger.info(`Obtained direct audio URL.`)
+			await userSession.updateTitle(id, title)
 		} catch (err: any) {
 			logger.error('Failed to get video info or audio format:', err)
-			await pushTranscriptionEvent(
+			await pushTranscribeEvent(
 				jobId,
 				`Xatolik: Video ma'lumotlarini yoki audio formatini olib bo'lmadi. ${err.message || ''}`,
-				true, // Mark as completed (with error)
+				true,
 				broadcast
 			)
 			await transcriptService.error(jobId)
-			return // Stop the job
+			return
 		}
-		// ----------------------------------
 
-		await pushTranscriptionEvent(
-			jobId,
-			'Ovoz yuklanmoqda',
-			false,
-			broadcast
-		)
+		await pushTranscribeEvent(jobId, 'Ovoz yuklanmoqda', false, broadcast)
 		await delay(500)
 
-		const segmentDuration = 160 // seconds
+		const segmentDuration = SEGMENT_DURATION_SECONDS
 		const numSegments = Math.ceil(totalDuration / segmentDuration)
-		await pushTranscriptionEvent(
+		await pushTranscribeEvent(
 			jobId,
 			`Ovoz ${numSegments} bo'lakka taqsimlanmoqda`,
 			false,
@@ -89,14 +95,14 @@ export async function runTranscriptionJob(
 		await delay(500)
 
 		// TRANSCRIPTION
-		await pushTranscriptionEvent(
+		await pushTranscribeEvent(
 			jobId,
 			`Matnga o'girish boshlandi`,
 			false,
 			broadcast
 		)
 
-		const editedTexts: (string | null)[] = [] // Allow null for failed segments
+		const editedTexts: (string | null)[] = []
 		let i = 0
 
 		while (i < numSegments) {
@@ -107,47 +113,84 @@ export async function runTranscriptionJob(
 				totalDuration - segmentStartTime
 			)
 
-			// Ensure actualDuration is positive, skip if calculation is off
 			if (actualDuration <= 0) {
 				logger.warn(
 					`Skipping segment ${segmentNumber} due to zero or negative duration.`
 				)
-				i++ // Ensure loop progresses
+				i++
 				continue
 			}
 
 			const destFileName = `segment_${jobId}_${i}.mp3`
-			let gcsUri: string | null = null // Track GCS URI for cleanup
-			let segmentProcessingError = false // Flag to track segment errors
+			let gcsUri: string | null = null
+			let segmentProcessingError = false
 
 			try {
 				logger.info(
 					`Processing segment ${segmentNumber}/${numSegments}: StartTime=${segmentStartTime}s, Duration=${actualDuration}s`
 				)
 
-				// --- Use ffmpeg directly for streaming and seeking ---
-				const ffmpegProc = ffmpeg(audioUrl) // Use the direct audio URL obtained earlier
-					.setStartTime(segmentStartTime) // Seek to the start time
-					.setDuration(actualDuration) // Process for this duration
+				const ffmpegProc = ffmpeg(audioUrl)
+					.setStartTime(segmentStartTime)
+					.setDuration(actualDuration)
 					.format('mp3')
 					.audioCodec('libmp3lame')
-					.audioQuality(2) // Adjust quality as needed
+					.audioQuality(2)
 					.on('error', (err, stdout, stderr) => {
-						// Log detailed ffmpeg errors
 						logger.error(
 							`FFmpeg error processing segment ${segmentNumber}: ${err.message}`
 						)
 						logger.error(`FFmpeg stderr: ${stderr}`)
-						// Note: Error here might need more robust handling, potentially throwing
-						// to be caught by the outer try/catch. For now, log and proceed.
 					})
-				// ----------------------------------------------------
+					.on('progress', progress => {
+						let lastReportedPercent = -1 // Keep track of the last reported percentage
+						const reportThreshold = 5 // Report progress every 5% increment
+						const progressBarWidth = 30 // Width of the text progress bar in logs
+						// Ensure percent is a valid number before proceeding
+						if (
+							typeof progress.percent !== 'number' ||
+							progress.percent < 0
+						) {
+							return // Ignore invalid progress data
+						}
 
-				// Upload the processed stream from ffmpeg
+						const currentPercent = Math.round(progress.percent)
+
+						// Throttle updates: Report only if it's the first update (0%),
+						// crosses the threshold, or reaches 100%
+						if (
+							(currentPercent === 0 && lastReportedPercent < 0) || // Report 0%
+							currentPercent >=
+								lastReportedPercent + reportThreshold || // Report threshold increments
+							(currentPercent === 100 &&
+								lastReportedPercent < 100) // Always report 100%
+						) {
+							lastReportedPercent = currentPercent // Update last reported value
+
+							// Log beautiful progress bar
+							const progressBar = createProgressBar(
+								currentPercent,
+								progressBarWidth
+							)
+							logger.info(
+								`Segment ${segmentNumber}/${numSegments} Progress: ${progressBar}`
+							)
+
+							// Push throttled, rounded event to UI/Client
+							pushTranscribeEvent(
+								jobId,
+								// Using "qayta ishlanmoqda" (being processed)
+								`Bo'lim ${segmentNumber}/${numSegments} qayta ishlanmoqda: ${currentPercent}%`,
+								false,
+								broadcast
+							)
+						}
+					})
+
 				gcsUri = await uploadStreamToGCS(
 					ffmpegProc.pipe(),
 					destFileName
-				) // pipe() returns a Readable stream
+				)
 				if (!gcsUri) {
 					throw new Error('Failed to upload segment to GCS.')
 				}
@@ -155,78 +198,72 @@ export async function runTranscriptionJob(
 					`Segment ${segmentNumber} uploaded to GCS: ${gcsUri}`
 				)
 
-				await pushTranscriptionEvent(
+				await pushTranscribeEvent(
 					jobId,
 					`Google matnni o'girmoqda ${segmentNumber}/${numSegments}`,
 					false,
 					broadcast
 				)
 
-				// Attempt Transcription
 				let transcriptGoogle = await transcribeWithGoogle(gcsUri)
 
-				// Simple Retry Logic (Optional but Recommended)
 				if (!transcriptGoogle) {
 					logger.warn(
 						`Google STT failed for segment ${segmentNumber}. Retrying once...`
 					)
-					await pushTranscriptionEvent(
+					await pushTranscribeEvent(
 						jobId,
 						`${segmentNumber}/${numSegments}-chi Google matnida xatolik. Qayta urinish...`,
 						false,
 						broadcast
 					)
-					await delay(1000) // Wait before retry
+					await delay(1000)
 					transcriptGoogle = await transcribeWithGoogle(gcsUri)
 				}
 
-				// Handle Transcription Failure
 				if (!transcriptGoogle) {
 					logger.error(
 						`Google STT failed definitively for segment ${segmentNumber}.`
 					)
-					await pushTranscriptionEvent(
+					await pushTranscribeEvent(
 						jobId,
 						`${segmentNumber}/${numSegments}-chi Google matni o'girilmadi!`,
 						false,
 						broadcast
 					)
-					segmentProcessingError = true // Mark segment as failed
+					segmentProcessingError = true
 					editedTexts.push(
 						`[Xatolik: ${segmentNumber}-chi bo'lak matnga o'girilmadi]`
 					)
 				} else {
-					// Attempt Editing
-					await pushTranscriptionEvent(
+					await pushTranscribeEvent(
 						jobId,
 						`Gemini tahrir qilmoqda ${segmentNumber}/${numSegments}`,
 						false,
 						broadcast
 					)
-					let finalText = await editTranscribed(transcriptGoogle)
+					let finalText = await editGemini(transcriptGoogle, prompt)
 
-					// Simple Retry Logic for Gemini (Optional)
 					if (!finalText) {
 						logger.warn(
 							`Gemini editing failed for segment ${segmentNumber}. Retrying once...`
 						)
-						await pushTranscriptionEvent(
+						await pushTranscribeEvent(
 							jobId,
 							`${segmentNumber}/${numSegments}-chi matn tahririda xatolik. Qayta urinish...`,
 							false,
 							broadcast
 						)
 						await delay(1000)
-						finalText = await editTranscribed(transcriptGoogle) // Retry editing
+						finalText = await editGemini(transcriptGoogle, prompt)
 					}
 
-					// Handle Editing Failure
 					if (finalText) {
 						editedTexts.push(finalText)
 						logger.info(
 							`Segment ${segmentNumber} processed successfully.`
 						)
-						await pushTranscriptionEvent(
+						await pushTranscribeEvent(
 							jobId,
 							`${segmentNumber}/${numSegments}-chi matn tayyor!`,
 							false,
@@ -236,16 +273,16 @@ export async function runTranscriptionJob(
 						logger.error(
 							`Gemini editing failed definitively for segment ${segmentNumber}.`
 						)
-						await pushTranscriptionEvent(
+						await pushTranscribeEvent(
 							jobId,
 							`Xatolik: ${segmentNumber}/${numSegments}-chi matn tahrir qilinmadi!`,
 							false,
 							broadcast
 						)
-						segmentProcessingError = true // Mark segment as failed
+						segmentProcessingError = true
 						editedTexts.push(
 							`[Xatolik: ${segmentNumber}-chi bo'lak tahrir qilinmadi]`
-						) // Add placeholder
+						)
 					}
 				}
 			} catch (err: any) {
@@ -253,29 +290,26 @@ export async function runTranscriptionJob(
 					`Error processing segment ${segmentNumber}: ${err.message}`,
 					err
 				)
-				await pushTranscriptionEvent(
+				await pushTranscribeEvent(
 					jobId,
 					`Xatolik ${segmentNumber}/${numSegments}-chi bo'lakni qayta ishlashda: ${err.message}`,
 					false,
 					broadcast
 				)
-				segmentProcessingError = true // Mark segment as failed
+				segmentProcessingError = true
 				editedTexts.push(
 					`[Xatolik: ${segmentNumber}-chi bo'lakda kutilmagan xatolik]`
-				) // Add placeholder
-				// We don't call transcriptService.error(jobId) here, let the job finish partially
+				)
 			} finally {
-				// --- Cleanup GCS File ---
 				if (gcsUri) {
 					if (!segmentProcessingError) {
-						// Only announce deletion if segment was somewhat successful
-						await pushTranscriptionEvent(
+						await pushTranscribeEvent(
 							jobId,
 							`Ovoz o'chirilmoqda ${segmentNumber}/${numSegments}`,
 							false,
 							broadcast
 						)
-						await delay(200) // Short delay before deletion
+						await delay(200)
 					}
 					try {
 						await deleteGCSFile(gcsUri)
@@ -289,14 +323,11 @@ export async function runTranscriptionJob(
 						)
 					}
 				}
-				// --- ALWAYS INCREMENT 'i' ---
 				i++
-				// --------------------------
-				await delay(500) // Small delay between segments
+				await delay(500)
 			}
-		} // End while loop
+		}
 
-		// Mark session complete (assuming each session has a single job to do)
 		try {
 			await userSession.completed(sessionId)
 		} catch (err) {
@@ -306,7 +337,7 @@ export async function runTranscriptionJob(
 			)
 		}
 
-		await pushTranscriptionEvent(
+		await pushTranscribeEvent(
 			jobId,
 			"Barcha bo'laklar qayta ishlandi. Matn jamlanmoqda...",
 			false,
@@ -314,16 +345,15 @@ export async function runTranscriptionJob(
 		)
 		await delay(500)
 
-		// Combine final results (filtering out nulls/error placeholders if desired, or keeping them)
 		const combinedResult = editedTexts
 			// .filter(text => text !== null && !text.startsWith('[Xatolik:')) // Option: Filter out errors
-			.map(text => text ?? '') // Replace nulls with empty strings if keeping all
+			.map(text => text ?? '')
 			.join('\n\n')
-			.replace(/\(\(\((.*?)\)\)\)/g, '$1') // Your existing replacement
+			.replace(/\(\(\((.*?)\)\)\)/g, '$1')
 
 		const duration = performance.now() - jobStartTime
 
-		await pushTranscriptionEvent(
+		await pushTranscribeEvent(
 			jobId,
 			`Text jamlandi! Yakuniy formatlash...`,
 			false,
@@ -336,15 +366,14 @@ export async function runTranscriptionJob(
 		await transcriptService.saveFinalTranscript(jobId, finalTranscript)
 
 		// Send final SSE event
-		await pushTranscriptionEvent(jobId, finalTranscript, true, broadcast) // Mark as completed
+		await pushTranscribeEvent(jobId, finalTranscript, true, broadcast) // Mark as completed
 	} catch (err: any) {
 		logger.error('FATAL runTranscriptionJob error:', err)
 		await transcriptService.error(jobId)
-		// Send an error event if possible
-		await pushTranscriptionEvent(
+		await pushTranscribeEvent(
 			jobId,
 			`Kritik xatolik yuz berdi: ${err.message || "Noma'lum xatolik"}`,
-			true, // Mark as completed (with error)
+			true,
 			broadcast
 		)
 	}
