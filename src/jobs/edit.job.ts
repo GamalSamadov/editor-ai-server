@@ -1,15 +1,8 @@
-import { performance } from 'perf_hooks'
-
 import { editService } from '@/services/edit/edit.service'
 import { userSession } from '@/services/session/session.service'
 
 import { pushEditEvent } from './edit'
-import {
-	delay,
-	editChatGPT,
-	formatDuration,
-	splitStringByWordCount
-} from './helpers'
+import { delay, editChatGPT, splitStringByWordCount } from './helpers'
 
 const SPLIT_WORD_COUNT = 350
 
@@ -20,7 +13,6 @@ export async function runEditJob(
 	broadcast?: (content: string, completed: boolean) => void
 ) {
 	const { text, prompt, title } = await userSession.findById(sessionId)
-	const jobStartTime = performance.now()
 	const finalTextArray: string[] = []
 
 	try {
@@ -99,9 +91,7 @@ export async function runEditJob(
 		)
 		await delay(500)
 
-		const duration = performance.now() - jobStartTime
-
-		const finalText = `<i style="display: block; font-style: italic; text-align: center;">🕒 Matnni tahrirlab chiqish uchun: ${formatDuration(duration)} vaqt ketdi!</i><h1 style="font-weight: 700; font-size: 1.8rem; margin: 1rem 0; text-align: center; line-height: 1;">${title}</h1>\n\n<p style="text-indent: 30px;">${combinedResult}</p>`
+		const finalText = `<h1 style="font-weight: 700; font-size: 1.8rem; margin: 1rem 0; text-align: center; line-height: 1;">${title}</h1>\n\n<p style="text-indent: 30px;">${combinedResult}</p>`
 
 		await editService.saveFinalText(jobId, finalText)
 
