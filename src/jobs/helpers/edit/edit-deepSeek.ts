@@ -20,7 +20,7 @@ export async function editDeepSeek(
 		const message = result.choices[0].message
 		return message ? message.content : null
 	} catch (error) {
-		logger.error('Error in editChatGPT:', error)
+		logger.error('Error in deepSeek:', error)
 		return null
 	}
 }

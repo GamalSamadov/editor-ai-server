@@ -2,12 +2,7 @@ import { editService } from '@/services/edit/edit.service'
 import { userSession } from '@/services/session/session.service'
 
 import { pushEditEvent } from './edit'
-import {
-	delay,
-	editChatGPT,
-	editGemini,
-	splitStringByWordCount
-} from './helpers'
+import { delay, editGemini, splitStringByWordCount } from './helpers'
 
 const SPLIT_WORD_COUNT = 700
 
@@ -46,7 +41,7 @@ export async function runCorrectionJob(
 				broadcast
 			)
 
-			let editedText = await editChatGPT(chunk, prompt)
+			let editedText = await editGemini(chunk, prompt)
 
 			while (!editedText) {
 				await pushEditEvent(
